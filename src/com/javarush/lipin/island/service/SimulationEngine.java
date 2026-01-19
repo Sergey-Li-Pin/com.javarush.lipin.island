@@ -1,10 +1,17 @@
 package com.javarush.lipin.island.service;
 
 import com.javarush.lipin.island.config.SimulationConfig;
-import com.javarush.lipin.island.entity.island.Island;
-import com.javarush.lipin.island.service.IslandStats;
-import com.javarush.lipin.island.view.ConsoleView;
+import com.javarush.lipin.island.model.Island;
+import com.javarush.lipin.island.model.Location;
+import com.javarush.lipin.island.model.organisms.animal.Animal;
+import com.javarush.lipin.island.util.RandomUtil;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -12,66 +19,107 @@ import java.util.concurrent.TimeUnit;
 public class SimulationEngine {
 
     private final Island island;
-    private final SimulationConfig config;
 
-    private final PlantService plantService;
-    private final StatisticsService statisticsService;
-    private final ConsoleView view;
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final ExecutorService locationPool = Executors.newFixedThreadPool(SimulationConfig.LOCATION_WORKERS);
 
-    private ScheduledExecutorService scheduler;
-    private int tick = 0;
+    private final LocationProcessor locationProcessor = new LocationProcessor();
+    private final StatisticsPrinter statisticsPrinter = new StatisticsPrinter();
 
-    public SimulationEngine(Island island,
-                            SimulationConfig config,
-                            PlantService plantService,
-                            StatisticsService statisticsService,
-                            ConsoleView view) {
+    private int tick;
+
+    public SimulationEngine(Island island) {
         this.island = island;
-        this.config = config;
-        this.plantService = plantService;
-        this.statisticsService = statisticsService;
-        this.view = view;
     }
 
     public void start() {
-        scheduler = Executors.newScheduledThreadPool(1);
-
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                doTick();
-            } catch (Exception e) {
-                e.printStackTrace();
-                stop();
+        scheduler.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                runTick();
             }
-        }, 0, config.getTickMillis(), TimeUnit.MILLISECONDS);
+        }, 0, SimulationConfig.TICK_DURATION_MS, TimeUnit.MILLISECONDS);
     }
 
-    private void doTick() {
+    private void runTick() {
         tick++;
 
-        // рост растений
-        plantService.grow(island, config);
+        // 1) Рост растений
+        growPlants();
 
-        // статистика по всему острову
-        IslandStats stats = statisticsService.calculate(island, tick);
-        view.print(stats);
+        // 2) Жизненный цикл животных в параллельных задачах по локациям
+        Queue<Migration> migrations = new ConcurrentLinkedQueue<>();
+        runAnimals(migrations);
 
-        // стоп-условия
-        if (stats.getAnimalsTotalAll() == 0) {
-            System.out.println("Все животные умерли. Симуляция завершена.");
-            stop();
-            return;
-        }
+        // 3) Применяем перемещения после обработки всех локаций
+        applyMigrations(migrations);
 
-        if (config.getMaxTicksSafety() > 0 && tick >= config.getMaxTicksSafety()) {
-            System.out.println("Достигнут лимит maxTicksSafety=" + config.getMaxTicksSafety() + ". Остановка (режим разработки).");
-            stop();
+        // 4) Статистика
+        statisticsPrinter.print(island, tick);
+
+        // Условие остановки, чтобы симуляция не работала бесконечно
+        if (SimulationConfig.MAX_TICKS > 0 && tick >= SimulationConfig.MAX_TICKS) {
+            shutdown();
         }
     }
 
-    public void stop() {
-        if (scheduler != null) {
-            scheduler.shutdown();
+    private void growPlants() {
+        for (Location location : island.getAllLocations()) {
+            int delta = RandomUtil.nextInt(SimulationConfig.PLANT_GROWTH_MIN, SimulationConfig.PLANT_GROWTH_MAX_EXCLUSIVE);
+            location.addPlants(delta);
         }
+    }
+
+    private void runAnimals(final Queue<Migration> migrations) {
+        List<Callable<Void>> tasks = new ArrayList<>();
+        for (final Location location : island.getAllLocations()) {
+            tasks.add(new Callable<Void>() {
+                @Override
+                public Void call() {
+                    try {
+                        locationProcessor.process(location, island, migrations);
+                    } catch (Exception e) {
+                        // Просто не даём ошибке упасть и остановить пул
+                        e.printStackTrace();
+                    }
+                    return null;
+                }
+            });
+        }
+
+        try {
+            locationPool.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void applyMigrations(Queue<Migration> migrations) {
+        Migration migration;
+        while ((migration = migrations.poll()) != null) {
+            Animal animal = migration.getAnimal();
+            if (animal == null || !animal.isAlive()) {
+                continue;
+            }
+
+            Location from = island.getLocation(migration.getFrom());
+            Location to = island.getLocation(migration.getTo());
+
+            // Если животное уже съели/удалили - remove вернёт false
+            if (!from.removeAnimal(animal)) {
+                continue;
+            }
+
+            // Если в новой клетке нет места - возвращаем обратно
+            if (!to.addAnimal(animal)) {
+                from.addAnimal(animal);
+            }
+        }
+    }
+
+    private void shutdown() {
+        scheduler.shutdown();
+        locationPool.shutdown();
+        System.out.println("\nSimulation finished.\n");
     }
 }

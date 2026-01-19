@@ -1,49 +1,35 @@
 package com.javarush.lipin.island.config;
 
-public class SimulationConfig {
-    private final int width;
-    private final int height;
+public final class SimulationConfig {
 
-    private final long tickMillis;
-
-    // Стартовые заполнения (0.0 .. 1.0)
-    private final double initialAnimalsFillFactor;
-    private final double initialPlantsFillFactor;
-
-    // Растения
-    private final int plantsMaxPerCell;
-    private final int plantsGrowthPerTick;
-
-    // Стоп-условие для разработки (0 = не ограничивать)
-    private final int maxTicksSafety;
-
-    public SimulationConfig(int width,
-                            int height,
-                            long tickMillis,
-                            double initialAnimalsFillFactor,
-                            double initialPlantsFillFactor,
-                            int plantsMaxPerCell,
-                            int plantsGrowthPerTick,
-                            int maxTicksSafety) {
-        this.width = width;
-        this.height = height;
-        this.tickMillis = tickMillis;
-        this.initialAnimalsFillFactor = initialAnimalsFillFactor;
-        this.initialPlantsFillFactor = initialPlantsFillFactor;
-        this.plantsMaxPerCell = plantsMaxPerCell;
-        this.plantsGrowthPerTick = plantsGrowthPerTick;
-        this.maxTicksSafety = maxTicksSafety;
+    private SimulationConfig() {
     }
 
-    public int getWidth() { return width; }
-    public int getHeight() { return height; }
-    public long getTickMillis() { return tickMillis; }
+    // Размер острова (X * Y)
+    public static final int ISLAND_WIDTH = 20;
+    public static final int ISLAND_HEIGHT = 10;
 
-    public double getInitialAnimalsFillFactor() { return initialAnimalsFillFactor; }
-    public double getInitialPlantsFillFactor() { return initialPlantsFillFactor; }
+    // Длительность такта
+    public static final long TICK_DURATION_MS = 1000;
 
-    public int getPlantsMaxPerCell() { return plantsMaxPerCell; }
-    public int getPlantsGrowthPerTick() { return plantsGrowthPerTick; }
+    // Сколько тиков выполнить и остановиться
+    public static final int MAX_TICKS = 50;
 
-    public int getMaxTicksSafety() { return maxTicksSafety; }
+    // Стартовая заполненность от максимума на клетке
+    public static final double INITIAL_PLANTS_FILL = 0.60; // 60% от MAX растений
+    public static final double INITIAL_ANIMALS_FILL = 0.05; // 5% от MAX животных
+
+    // Рост растений за тик на каждой клетке
+    public static final int PLANT_GROWTH_MIN = 1;
+    public static final int PLANT_GROWTH_MAX_EXCLUSIVE = 6; // 1..5
+
+    // Шансы действий
+    public static final int MOVE_CHANCE_PERCENT = 50;
+    public static final int REPRODUCTION_CHANCE_PERCENT = 25;
+
+    // Cколько «сытости» теряется за тик
+    public static final double HUNGER_RATE = 0.25;
+
+    // Сколько потоков использовать для обработки локаций
+    public static final int LOCATION_WORKERS = Math.max(2, Runtime.getRuntime().availableProcessors());
 }
