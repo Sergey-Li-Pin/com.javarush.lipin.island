@@ -1,6 +1,8 @@
 package com.javarush.lipin.island.model.organisms.animal;
 
-import com.javarush.lipin.island.config.*;
+import com.javarush.lipin.island.config.EatingProbability;
+import com.javarush.lipin.island.config.SimulationConfig;
+import com.javarush.lipin.island.config.Species;
 import com.javarush.lipin.island.factory.OrganismFactory;
 import com.javarush.lipin.island.model.Island;
 import com.javarush.lipin.island.model.Location;
@@ -12,6 +14,9 @@ import com.javarush.lipin.island.util.RandomUtil;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Базовый класс для всех животных.
+ */
 public abstract class Animal extends Organism {
 
     private double satiety;
@@ -42,6 +47,9 @@ public abstract class Animal extends Organism {
         alive = false;
     }
 
+    /**
+     * Голодание: каждый тик животное теряет часть «сытости».
+     */
     public void decreaseSatiety() {
         if (!alive) {
             return;
@@ -57,6 +65,9 @@ public abstract class Animal extends Organism {
         }
     }
 
+    /**
+     * Животное пытается поесть на своей клетке.
+     */
     public void eat(Location location) {
         if (!alive || location == null) {
             return;
@@ -67,7 +78,7 @@ public abstract class Animal extends Organism {
             return;
         }
         if (satiety >= need) {
-            return;
+            return; // уже сыто
         }
 
         List<Species> possibleFoods = collectPossibleFoods(location);
@@ -101,6 +112,11 @@ public abstract class Animal extends Organism {
         eat(victim);
     }
 
+    /**
+     * Выбор направления (и шага) передвижения.
+     *
+     * @return новая позиция или та же самая, если животное решило не двигаться.
+     */
     public Position move(Island island, Position from) {
         if (!alive || island == null || from == null) {
             return from;
@@ -146,6 +162,11 @@ public abstract class Animal extends Organism {
         return new Position(newX, newY);
     }
 
+    /**
+     * Размножение: если на клетке есть пара (минимум 2 особи вида) -
+     * с шансом, который зависит от вида (Species.getReproductionChancePercent()),
+     * появляется детёныш.
+     */
     public Animal multiply(Location location) {
         if (!alive || location == null) {
             return null;
@@ -160,14 +181,15 @@ public abstract class Animal extends Organism {
             return null;
         }
 
-        if (!RandomUtil.chance(SimulationConfig.REPRODUCTION_CHANCE_PERCENT)) {
+        int chance = getSpecies().getReproductionChancePercent();
+        if (!RandomUtil.chance(chance)) {
             return null;
         }
 
         return OrganismFactory.getInstance().createAnimal(getSpecies());
     }
 
-    // Внутренние методы
+    // ---- Внутренние методы ----
 
     protected void eat(Eatable food) {
         if (!alive || food == null) {
